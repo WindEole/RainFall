@@ -1,0 +1,218 @@
+On redirige notre VM sur le port 4243
+
+connexion : ╰─ ssh level0@127.0.0.1 -p 4243
+
+A l'ouverture VM, on a ceci : 
+
+----------------------------------------------------------------------------
+
+level0@127.0.0.1's password: (level0)
+  GCC stack protector support:            Enabled
+		Cela signifie que le compilateur GCC a été utilisé pour compiler les
+		programmes avec la protection de pile activée (-fstack-protector),
+		ce qui aide à détecter et à prévenir certains types de débordements
+		de tampon.'
+  Strict user copy checks:                Disabled
+		C'est un paramètre de sécurité du noyau qui, lorsqu'il est activé,
+		effectue des vérifications plus strictes sur certaines opérations de
+		copie de données entre l'espace utilisateur et l'espace noyau. Le
+		fait qu'il soit désactivé réduit le niveau de ces contrôles de
+		sécurité.
+  Restrict /dev/mem access:               Enabled
+  		Cela signifie que l'accès au fichier de périphérique /dev/mem, qui
+		représente la mémoire physique de l'ordinateur dans l'espace des
+		fichiers, est restreint. Ceci est une mesure de sécurité pour
+		empêcher les programmes de lire ou d'écrire la mémoire physique
+		directement.
+  Restrict /dev/kmem access:              Enabled
+		Tout comme pour /dev/mem, cela indique que l'accès au fichier
+		/dev/kmem, qui est une représentation de la mémoire du noyau, est
+		également restreint.
+  grsecurity / PaX: No GRKERNSEC
+		Grsecurity est une série de patchs pour le noyau Linux qui renforce
+		la sécurité. PaX est une partie de Grsecurity qui s'occupe
+		spécifiquement de la prévention de l'exécution de code non autorisé.
+		"No GRKERNSEC" signifie que ces patchs ne sont pas présents dans le
+		noyau actuel de la VM.
+  Kernel Heap Hardening: No KERNHEAP
+		Ceci indique que les mesures de durcissement de la mémoire tas
+		(heap) du noyau, qui pourraient prévenir certaines attaques
+		d'exploitation, ne sont pas activées.
+ System-wide ASLR (kernel.randomize_va_space): Off (Setting: 0)
+		ASLR (Address Space Layout Randomization) est une technique de
+		sécurité qui randomise l'emplacement de la mémoire des processus
+		pour rendre les attaques plus difficiles. Le fait qu'il soit
+		désactivé indique que les emplacements mémoire seront prévisibles,
+		ce qui pourrait faciliter les attaques de type buffer overflow.
+
+RELRO     STACK CANARY     NX          PIE     RPATH     RUNPATH     FILE
+No RELRO  No canary found  NX enabled  No PIE  No RPATH  No RUNPATH  /home/user/level0/level0
+
+-> No RELRO (RELocation Read-Only) = la protection RELRO (sécurité qui rend
+	certaines parties de la mémoire en lecture seule pour prévenir les
+	attaques de corruption de mémoire) est désactivée
+
+-> No canary found = Les canaris de pile sont des valeurs placées sur la pile
+	pour détecter un débordement de pile. "No canary found" suggère que cette
+	protection n'est pas utilisée, rendant l'exécutable vulnérable aux
+	attaques de débordement de pile.
+
+-> NX enabled = NX (No eXecute) est une fonctionnalité qui marque certaines
+	zones de la mémoire, comme la pile et le tas, comme non exécutables. Cela
+	empêche l'exécution de code injecté dans ces zones. "NX enabled" indique
+	que cette protection est active.
+
+-> No PIE (Position Independant Executable) = PIE est une mesure qui permet
+	à un programme de s'exécuter à des emplacements mémoire aléatoires,
+	rendant ainsi les attaques plus difficiles car l'attaquant ne peut pas
+	prédire où le code sera en mémoire. "No PIE" signifie que le binaire peut
+	être chargé à la même adresse mémoire chaque fois qu'il est exécuté.
+
+-> No RPATH = RPATH est une option de compilation qui spécifie où les
+	bibliothèques partagées sont recherchées en premier. "No RPATH" indique
+	qu'aucun chemin n'est intégré dans l'exécutable pour la recherche de
+	bibliothèques.
+
+-> No RUNPATH = RUNPATH est similaire à RPATH mais avec une priorité
+	inférieure lors de la recherche de bibliothèques partagées.
+----------------------------------------------------------------------------
+
+Rien qu'avec cela, on a des pistes à explorer pour nos attaques !! :D
+
+    Pas de protection de débordement de pile (No stack canary):
+        Essayez des attaques par débordement de pile (buffer overflow) pour
+		écraser la pile et potentiellement prendre le contrôle du flux 
+		d'exécution du programme.
+
+    ASLR désactivé:
+        Les adresses en mémoire seront constantes à travers les exécutions,
+		vous pouvez donc tenter d'exploiter des adresses mémoire connues pour
+		des attaques ROP (Return-Oriented Programming) ou pour réécrire des
+		pointeurs de fonctions spécifiques.
+
+    Exécutables non PIE:
+        Cela signifie que le binaire peut être chargé à une adresse prévisible.
+		C'est particulièrement utile en combinaison avec l'ASLR désactivé,
+		car vous pouvez écrire des payloads qui se réfèrent à des adresses
+		connues.
+
+    NX activé:
+        Bien que vous ne puissiez pas exécuter directement le code sur la
+		pile, vous pouvez toujours utiliser des techniques comme ROP pour
+		exécuter du code malveillant.
+
+    Pas de RELRO:
+        Cela vous permet de tenter des attaques qui réécrivent la Global
+		Offset Table (GOT) ou d'autres sections de la mémoire qui seraient
+		autrement protégées en écriture.
+
+    Pas de protections grsecurity/PaX ou KERNHEAP:
+        L'absence de ces protections avancées ouvre la possibilité d'exploiter
+		des vulnérabilités qui seraient autrement atténuées par ces mécanismes.
+
+    Pas de RPATH ou RUNPATH:
+        Bien que pas immédiatement utile pour l'exploitation, l'absence de
+		ces options signifie que le système utilisera les chemins de
+		bibliothèques par défaut, ce qui pourrait être pertinent si vous
+		pouvez contrôler ces chemins d'une manière ou d'une autre (par
+		exemple, via une attaque de pollution de $LD_LIBRARY_PATH).
+
+les concepts de base de l'exploitation de la mémoire
+les outils courants de débogage et de reverse engineering, tels que gdb, strace, ltrace, objdump, readelf
+
+----------------------------------------------------------------------------
+
+On va utiliser GDB (GNU DeBugger) : 
+https://zestedesavoir.com/articles/97/introduction-a-la-retroingenierie-de-binaires/?page=2
+
+LES REGISTRES x86
+
+Les registres sont des petites mémoires qui vont servir à contenir des valeurs 
+de l’ordre de quelques octets. Ces valeurs peuvent représenter tout et n’importe
+quoi : le résultat d’une expression arithmétique / logique, la valeur de retour
+d’une fonction, une adresse mémoire… elle est PETITE, contrairement à la RAM qui
+est de l’ordre de quelques Giga-octets ou le disque dur mécanique qui est de
+l’ordre de quelques Téra-octets.
+
+L’archi x86 compte 8 registres : eax, ebx, ecx, edx, edi, esi, ebp, esp. 
+
+esp = (extended stack pointer) pointeur de pile 
+ebp = (extended base pointer) pointeur de base
+esp et ebp servent à délimiter la stack (ou stack frame = cadre de pile courant)
+
+eax = registre d’accumulation étendu : il est utilisé pour stocker le résultat
+	d’opérations arithmétiques ou les valeurs de retour des routines appelées
+
+ebx = registre de base étendu : il est utilisé dans le cadre d’accès à la
+	mémoire via l’adressage d’une donnée. Le registre de base contiendra une
+	adresse mémoire de base, tandis que nous fournirons à côté un index, un
+	offset, etc.
+
+
+INSTRUCTIONS ASSEMBLY : 
+
+Ces opérations sont des fondations de base de la manipulation des données en
+assembleur, permettant de gérer la pile, d'effectuer des calculs arithmétiques
+et des opérations logiques nécessaires pour le contrôle de flux, la
+manipulation de données et la coordination des ressources du système.
+
+push:	Cette instruction empile un registre ou une valeur sur la pile. Cela
+		décrémente le pointeur de pile (esp dans le cas d'une architecture x86)
+		de la taille de l'élément à empiler (généralement 4 octets pour les
+		entiers en x86) et copie l'élément au sommet de la pile. Par exemple,
+		push %ebp sauvegarde la valeur courante de %ebp (Base Pointer) sur la pile.
+
+and:	C'est une opération bit à bit ET. Elle compare chaque bit des deux
+		opérandes et définit le bit dans le résultat à 1 si les deux bits sont
+		1. Si l'un des bits est 0, le bit résultant sera 0. C'est souvent utilisé pour masquer certains bits, par exemple and $0xfffffff0,%esp aligne le pointeur de pile (esp) sur 16 octets (dans ce cas, les quatre bits de poids faible sont mis à zéro).
+
+sub:	Soustraction. Soustrait la deuxième valeur de la première et stocke le
+		résultat dans la première opérande. Par exemple, sub $0x20,%esp
+		soustrait 32 (en décimal) de %esp, ce qui alloue 32 octets sur la pile
+		pour une utilisation locale dans la fonction.
+
+add:	Addition. Ajoute la deuxième valeur à la première et stocke le
+		résultat dans la première opérande. Par exemple, add $0x4,%eax ajoute
+		4 au contenu du registre %eax.
+
+call:	Cette instruction appelle une fonction. L'adresse de retour est mise
+		sur la pile, et le pointeur d'instruction (EIP) est mis à l'adresse
+		de la fonction appelée.
+
+mov:	mov est utilisé pour copier des données d'une source à une destination.
+		Par exemple, mov %eax, 0x10(%esp) copie la valeur dans le registre eax
+		à l'emplacement mémoire à l'adresse esp + 0x10.
+
+jne:	"Jump if Not Equal". Cette instruction dévie le flux du programme à
+		l'adresse indiquée si la dernière comparaison (cmp) n'a pas trouvé
+		d'égalité.
+
+movl:	C'est une variante de mov qui est spécifiquement utilisée pour
+		déplacer des valeurs longues (32 bits en mode 32 bits).
+
+cmp:	"Compare". Cette instruction compare deux valeurs et définit les
+		drapeaux de condition dans le processeur en conséquence, qui peuvent
+		ensuite être testés par des instructions de saut comme jne.
+
+lea:	(Load Effective Address) : Cette instruction est utilisée pour charger 
+		l'adresse effective d'un emplacement mémoire dans un registre.
+		Contrairement à l'instruction mov, lea ne charge pas la valeur de
+		l'emplacement mémoire, mais plutôt son adresse. Elle est souvent
+		utilisée pour des calculs d'adresse ou pour préparer des arguments 
+		pour certaines opérations.
+
+leave: 	Cette instruction est utilisée pour restaurer le pointeur de pile (esp)
+		à son état avant l'appel d'une fonction, et pour récupérer la valeur de
+		base du pointeur de base (ebp) utilisée dans la fonction. leave est
+		essentiellement un raccourci pour les instructions mov esp, ebp suivi 
+		par pop ebp.
+
+ret: 	L'instruction ret est utilisée pour terminer une fonction et revenir à 
+		la fonction appelante. Elle retire l'adresse de retour qui était empilée
+		sur la pile lors de l'appel de la fonction et saute à cette adresse.
+
+jmp: 	Cette instruction est utilisée pour sauter inconditionnellement à 
+		l'adresse spécifiée. Dans le contexte du gets@plt, cela fait partie du 
+		mécanisme de la table de procédures liée dynamiquement (Procedure 
+		Linkage Table, PLT), qui est utilisée pour gérer les appels de fonctions
+		vers des bibliothèques partagées (dynamiquement liées).

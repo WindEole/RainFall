@@ -1,0 +1,188 @@
+WALKTHROUGH LEVEL0
+
+---> pwd : /home/user/level0
+
+---> ls -la : 
+total 737
+dr-xr-x---+ 1 level0 level0     60 Mar  6  2016 .
+dr-x--x--x  1 root   root      340 Sep 23  2015 ..
+-rw-r--r--  1 level0 level0    220 Apr  3  2012 .bash_logout
+-rw-r--r--  1 level0 level0   3530 Sep 23  2015 .bashrc
+-rwsr-x---+ 1 level1 users  747441 Mar  6  2016 level0
+-rw-r--r--  1 level0 level0    675 Apr  3  2012 .profile
+
+=> nous disposons d'un fichier level0, appartenant à level1 (et non à level0)
+- permission x : ce fichier est un executable
+- permission s : bit SUID activé donc il ne s'exécute qu'avec les privilèges
+	du owner (ici level1) et non avec les privilèges du user (ici level0)
+- permission + : des ACL (listes de contrôle d'accès) sont appliquées sur ce
+	fichier
+
+---> getfacl level0 (pour voir les ACL) :
+# file: level0
+# owner: level1
+# group: users
+# flags: s--
+user::rwx
+user:level0:r-x
+user:level1:r-x
+group::---
+mask::r-x
+other::---
+
+---> file level0 (pour déterminer le type de fichier) : 
+level0: setuid ELF 32-bit LSB executable, Intel 80386, version 1 (GNU/
+Linux), statically linked, for GNU/Linux 2.6.24, BuildID[sha1]
+=0x85cf4024dbe79c7ccf4f30e7c601a356ce04f412, not stripped
+
+=> A retenir des infos ci-dessus : 
+- setuid = le processus s'execute avec les droits du owner
+- ELF 32-bit LSB executable = format ELF (Executable and Linkable Format), 
+	format standard pour les exécutables sous Linux. Il est conçu pour les
+	architectures 32 bits et utilise l'ordre des octets "Little Endian"
+	(LSB pour "Least Significant Byte"). 
+- Intel 80386 = le fichier est compilé pour l'architecture Intel 80386, qui
+	est une archi 32 bits (ATTENTION notre VM est 64 bits - sujet)
+- statically linked = signifie que toutes les bibliothèques nécessaires
+	au programme sont incluses dans l'exécutable, plutôt que d'être chargées
+	dynamiquement à l'exécution à partir des bibliothèques partagées du
+	système. Donc on ne peux pas utiliser des techniques comme le
+	détournement de fonctions de bibliothèques partagées (via des
+	modifications de LD_PRELOAD par exemple) pour exploiter le programme.
+- for GNU/Linux 2.6.24 = Le fichier a été compilé pour une version
+	spécifique du noyau Linux, ce qui peut ou non être pertinent pour
+	l'exploitation, si on décide d'exploiter une vulnérabilité au niveau
+	de l'application ou du noyau.
+- not stripped = le fichier contient des symboles de débogage. Les symboles
+	de débogage peuvent être extrêmement utiles lors de la rétro-ingénierie
+	du fichier, car ils peuvent fournir des noms de fonctions, des
+	variables, etc.
+
+---> objdump [option] level0
+https://stacklima.com/commande-objdump-sous-linux-avec-des-exemples/
+
+-> objdump -f level0 (Pour obtenir les en-têtes de fichier d’un fichier
+objet. Cette commande imprimera toutes les informations relatives aux
+en-têtes de fichier du fichier.) : 
+level0:     file format elf32-i386
+architecture: i386, flags 0x00000112:
+EXEC_P, HAS_SYMS, D_PAGED
+start address 0x08048de8
+
+-> objdump -t level0 | grep ' main' (pour avoir les adresses mémoire de
+début et de fin du main)
+080ee1a0 l     O .data	00000450 main_arena
+08048ec0 g     F .text	000000c7 main
+ATTENTION la ligne qui nous interesse est la ligne notée F (pour fonction)
+
+-> objdump -d --start-address=0x08048ec0 --stop-address=$((0x08048ec0 + 0x000000c7)) level0 (pour désassembler la partie main du programme) :
+Disassembly of section .text:
+
+08048ec0 <main>:
+ 8048ec0:	55                   	push   %ebp
+ 8048ec1:	89 e5                	mov    %esp,%ebp
+ 8048ec3:	83 e4 f0             	and    $0xfffffff0,%esp
+ 8048ec6:	83 ec 20             	sub    $0x20,%esp
+ 8048ec9:	8b 45 0c             	mov    0xc(%ebp),%eax
+ 8048ecc:	83 c0 04             	add    $0x4,%eax
+ 8048ecf:	8b 00                	mov    (%eax),%eax
+
+ 8048ed4:	e8 37 08 00 00       	call   8049710 <atoi>
+ 8048ed9:	3d a7 01 00 00       	cmp    $0x1a7,%eax
+ 8048ede:	75 78                	jne    8048f58 <main+0x98>
+ 8048ee0:	c7 04 24 48 53 0c 08 	movl   $0x80c5348,(%esp)
+ 8048ee7:	e8 04 7d 00 00       	call   8050bf0 <__strdup>
+ 8048eec:	89 44 24 10          	mov    %eax,0x10(%esp)
+ 8048ef0:	c7 44 24 14 00 00 00 	movl   $0x0,0x14(%esp)
+ 8048ef7:	00 
+ 8048ef8:	e8 83 b7 00 00       	call   8054680 <__getegid>
+ 8048efd:	89 44 24 1c          	mov    %eax,0x1c(%esp)
+ 8048f01:	e8 6a b7 00 00       	call   8054670 <__geteuid>
+ 8048f06:	89 44 24 18          	mov    %eax,0x18(%esp)
+
+=> ce qui nous interesse la-dedans, ce sont les lignes call : ce sont des
+appels de fonctions ! On a atoi, strdup, getegid, geteuid
+
+ 8048ed1:	89 04 24             	mov    %eax,(%esp)
+ 8048ed4:	e8 37 08 00 00       	call   8049710 <atoi>
+ 8048ed9:	3d a7 01 00 00       	cmp    $0x1a7,%eax
+
+---> GDB (GNU DeBugger) Plus simple que objdump...
+https://users.umiacs.umd.edu/~tdumitra/courses/ENEE757/Fall15/misc/gdb_tutorial.html
+
+gdb level0
+disas main
+
+=> on obtient les mêmes info que ci-dessus : 
+   0x08048ec0 <+0>:		push   %ebp
+   0x08048ec1 <+1>:		mov    %esp,%ebp
+   0x08048ec3 <+3>:		and    $0xfffffff0,%esp
+   0x08048ec6 <+6>:		sub    $0x20,%esp
+   0x08048ec9 <+9>:		mov    0xc(%ebp),%eax
+   0x08048ecc <+12>:	add    $0x4,%eax
+   0x08048ecf <+15>:	mov    (%eax),%eax
+   0x08048ed1 <+17>:	mov    %eax,(%esp)
+   0x08048ed4 <+20>:	call   0x8049710 <atoi>
+   0x08048ed9 <+25>:	cmp    $0x1a7,%eax
+   0x08048ede <+30>:	jne    0x8048f58 <main+152>
+   0x08048ee0 <+32>:	movl   $0x80c5348,(%esp)
+   0x08048ee7 <+39>:	call   0x8050bf0 <strdup>
+   0x08048eec <+44>:	mov    %eax,0x10(%esp)
+   0x08048ef0 <+48>:	movl   $0x0,0x14(%esp)
+
+Instruction Assembly : 
+Ces opérations sont des fondations de base de la manipulation des données en
+assembleur, permettant de gérer la pile, d'effectuer des calculs arithmétiques
+et des opérations logiques nécessaires pour le contrôle de flux, la
+manipulation de données et la coordination des ressources du système.
+
+push:	Cette instruction empile un registre ou une valeur sur la pile. Cela
+		décrémente le pointeur de pile (esp dans le cas d'une architecture x86)
+		de la taille de l'élément à empiler (généralement 4 octets pour les
+		entiers en x86) et copie l'élément au sommet de la pile. Par exemple,
+		push %ebp sauvegarde la valeur courante de %ebp (Base Pointer) sur la pile.
+
+and:	C'est une opération bit à bit ET. Elle compare chaque bit des deux
+		opérandes et définit le bit dans le résultat à 1 si les deux bits sont
+		1. Si l'un des bits est 0, le bit résultant sera 0. C'est souvent utilisé pour masquer certains bits, par exemple and $0xfffffff0,%esp aligne le pointeur de pile (esp) sur 16 octets (dans ce cas, les quatre bits de poids faible sont mis à zéro).
+
+sub:	Soustraction. Soustrait la deuxième valeur de la première et stocke le
+		résultat dans la première opérande. Par exemple, sub $0x20,%esp
+		soustrait 32 (en décimal) de %esp, ce qui alloue 32 octets sur la pile
+		pour une utilisation locale dans la fonction.
+
+add:	Addition. Ajoute la deuxième valeur à la première et stocke le
+		résultat dans la première opérande. Par exemple, add $0x4,%eax ajoute
+		4 au contenu du registre %eax.
+
+call:	Cette instruction appelle une fonction. L'adresse de retour est mise
+		sur la pile, et le pointeur d'instruction (EIP) est mis à l'adresse
+		de la fonction appelée.
+
+mov:	mov est utilisé pour copier des données d'une source à une destination.
+		Par exemple, mov %eax, 0x10(%esp) copie la valeur dans le registre eax
+		à l'emplacement mémoire à l'adresse esp + 0x10.
+
+jne:	"Jump if Not Equal". Cette instruction dévie le flux du programme à
+		l'adresse indiquée si la dernière comparaison (cmp) n'a pas trouvé
+		d'égalité.
+
+movl:	C'est une variante de mov qui est spécifiquement utilisée pour
+		déplacer des valeurs longues (32 bits en mode 32 bits).
+
+cmp:	"Compare". Cette instruction compare deux valeurs et définit les
+		drapeaux de condition dans le processeur en conséquence, qui peuvent
+		ensuite être testés par des instructions de saut comme jne.
+
+Donc, ce qui se passe, c'est que l'argument que l'on met en entrée de notre
+programme level0 est enregistré dans le registre eax, puis, après un atoim est comparé avec une valeur en dur : 0x1a7 (423 en decimal). Si c'est ok -> 
+le programme continue, si non -> message d'erreur
+
+Notre programme attend donc 423 en paramètre.
+
+---> ./level0 423
+cela nous ouvre un terminal, a priori avec des droits escaladés a level1.
+On entre : 
+cat /home/user/level1/.pass
+et on obtient le mot de passe pour le level suivant
+

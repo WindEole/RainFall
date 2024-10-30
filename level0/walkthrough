@@ -1,0 +1,68 @@
+WALKTHROUGH LEVEL0
+
+---> ls -la : 
+-rwsr-x---+ 1 level1 users  747441 Mar  6  2016 level0
+
+=> nous disposons d'un fichier level0, appartenant à level1 (et non à level0)
+- permission x : ce fichier est un executable
+- permission s : bit SUID activé donc il ne s'exécute qu'avec les privilèges
+	du owner (ici level1) et non avec les privilèges du user (ici level0)
+- permission + : des ACL (listes de contrôle d'accès) sont appliquées sur ce
+	fichier
+
+---> GDB (GNU DeBugger)
+https://users.umiacs.umd.edu/~tdumitra/courses/ENEE757/Fall15/misc/gdb_tutorial.html
+
+gdb level0
+disas main
+
+   0x08048ec0 <+0>:		push   %ebp
+   0x08048ec1 <+1>:		mov    %esp,%ebp
+   0x08048ec3 <+3>:		and    $0xfffffff0,%esp
+   0x08048ec6 <+6>:		sub    $0x20,%esp
+   0x08048ec9 <+9>:		mov    0xc(%ebp),%eax
+   0x08048ecc <+12>:	add    $0x4,%eax
+   0x08048ecf <+15>:	mov    (%eax),%eax
+   0x08048ed1 <+17>:	mov    %eax,(%esp)
+   0x08048ed4 <+20>:	call   0x8049710 <atoi>
+   0x08048ed9 <+25>:	cmp    $0x1a7,%eax
+   0x08048ede <+30>:	jne    0x8048f58 <main+152>
+   0x08048ee0 <+32>:	movl   $0x80c5348,(%esp)
+   0x08048ee7 <+39>:	call   0x8050bf0 <strdup>
+   0x08048eec <+44>:	mov    %eax,0x10(%esp)
+   0x08048ef0 <+48>:	movl   $0x0,0x14(%esp)
+
+Instruction Assembly : 
+Ces opérations sont des fondations de base de la manipulation des données en
+assembleur, permettant de gérer la pile, d'effectuer des calculs arithmétiques
+et des opérations logiques nécessaires pour le contrôle de flux, la
+manipulation de données et la coordination des ressources du système.
+
+=> les opérations qui nous interessent : 
+
+call:	Cette instruction appelle une fonction. L'adresse de retour est mise
+		sur la pile, et le pointeur d'instruction (EIP) est mis à l'adresse
+		de la fonction appelée.
+
+cmp:	"Compare". Cette instruction compare deux valeurs et définit les
+		drapeaux de condition dans le processeur en conséquence, qui peuvent
+		ensuite être testés par des instructions de saut comme jne.
+
+jne:	"Jump if Not Equal". Cette instruction dévie le flux du programme à
+		l'adresse indiquée si la dernière comparaison (cmp) n'a pas trouvé
+		d'égalité.
+
+
+Donc, ce qui se passe, c'est que l'argument que l'on met en entrée de notre
+programme level0 est enregistré dans le registre eax, puis, après un atoi, est
+comparé avec une valeur en dur : 0x1a7 (423 en decimal). Si c'est ok -> 
+le programme continue, si non -> message d'erreur
+
+Notre programme attend donc 423 en paramètre.
+
+---> ./level0 423
+cela nous ouvre un terminal, a priori avec des droits escaladés a level1.
+On entre : 
+cat /home/user/level1/.pass
+et on obtient le mot de passe pour le level suivant
+
